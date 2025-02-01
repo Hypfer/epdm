@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>E-Paper Display Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+        .display-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        .connected { background: #c8e6c9; color: #2e7d32; }
+        .disconnected { background: #ffcdd2; color: #c62828; }
+        .drawing-status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        .drawing { background: #fff176; color: #f57f17; }
+        .idle { background: #b2dfdb; color: #00695c; }
+        .pending { background: #ffcc80; color: #ef6c00; }
+
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #1976D2; }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        button.danger { background: #F44336; }
+        button.danger:hover { background: #D32F2F; }
+        button.danger:disabled {
+            background: #cccccc;
+        }
+        .image-upload {
+            margin: 10px 0;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 4px;
+        }
+        .status-info {
+            font-size: 14px;
+            color: #666;
+            margin: 10px 0;
+        }
+        .refresh-button {
+            float: right;
+            background: #4CAF50;
+        }
+        .refresh-button:hover {
+            background: #388E3C;
+        }
+        .status-spinner {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            margin-right: 5px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .display-status {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+<h1>E-Paper Display Manager</h1>
+<button onclick="updateDisplays()" class="refresh-button">Refresh Status</button>
+<div id="displays"></div>
+
+<script>
+    let displayCards = new Map(); // Store display card references
+
+    function showMessage(message, isError = false) {
+        const div = document.createElement('div');
+        div.style.position = 'fixed';
+        div.style.top = '20px';
+        div.style.right = '20px';
+        div.style.padding = '10px 20px';
+        div.style.borderRadius = '4px';
+        div.style.backgroundColor = isError ? '#ffebee' : '#e8f5e9';
+        div.style.color = isError ? '#c62828' : '#2e7d32';
+        div.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+        div.textContent = message;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 3000);
+    }
+
+    function createDisplayCard(display) {
+        const card = document.createElement('div');
+        card.className = 'display-card';
+        card.innerHTML = `
+                <div class="display-status" id="status-${display.deviceId}">
+                    <h2>
+                        ${display.deviceId}
+                        <span class="status connected">Connected</span>
+                        <span class="drawing-status idle">Idle</span>
+                    </h2>
+                    <div class="status-info">
+                        <p>Resolution: ${display.width}x${display.height}</p>
+                    </div>
+                </div>
+                <div class="image-upload">
+                    <input type="file" id="image-${display.deviceId}" accept="image/*">
+                    <button onclick="uploadImage('${display.deviceId}')">Upload Image</button>
+                </div>
+                <div>
+                    <button onclick="sendCommand('${display.deviceId}', 'REFRESH')" class="refresh-cmd">
+                        Refresh Display
+                    </button>
+                    <button onclick="sendCommand('${display.deviceId}', 'REBOOT')" class="danger">
+                        Reboot
+                    </button>
+                </div>
+            `;
+        return card;
+    }
+
+    function updateDisplayStatus(deviceId, connected, drawingStatus) {
+        const statusDiv = document.getElementById(`status-${deviceId}`);
+        if (!statusDiv) return;
+
+        const statusSpan = statusDiv.querySelector('.status');
+        statusSpan.className = `status ${connected ? 'connected' : 'disconnected'}`;
+        statusSpan.textContent = connected ? 'Connected' : 'Disconnected';
+
+        const drawingStatusSpan = statusDiv.querySelector('.drawing-status');
+        if (drawingStatus.isDrawing) {
+            drawingStatusSpan.className = 'drawing-status drawing';
+            drawingStatusSpan.innerHTML = '<span class="status-spinner"></span>Drawing';
+        } else if (drawingStatus.hasPendingImage) {
+            drawingStatusSpan.className = 'drawing-status pending';
+            drawingStatusSpan.textContent = 'Pending';
+        } else {
+            drawingStatusSpan.className = 'drawing-status idle';
+            drawingStatusSpan.textContent = 'Idle';
+        }
+
+        // Update button states
+        const card = statusDiv.closest('.display-card');
+        const buttons = card.querySelectorAll('button');
+        const fileInput = card.querySelector('input[type="file"]');
+
+        buttons.forEach(button => {
+            button.disabled = drawingStatus.isDrawing;
+        });
+        fileInput.disabled = drawingStatus.isDrawing;
+    }
+
+    function sendCommand(deviceId, command) {
+        fetch('/displays/' + deviceId + '/command', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ command: command })
+        })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message || data.error, !!data.error);
+                if (command === 'REBOOT') {
+                    setTimeout(() => updateDisplays(), 5000);
+                } else {
+                    updateDisplays();
+                }
+            })
+            .catch(error => showMessage(error.toString(), true));
+    }
+
+    function uploadImage(deviceId) {
+        const input = document.getElementById('image-' + deviceId);
+        const file = input.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        // Disable the upload button during upload
+        const uploadButton = input.nextElementSibling;
+        uploadButton.disabled = true;
+        uploadButton.textContent = 'Uploading...';
+
+        fetch('/displays/' + deviceId + '/image', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message || data.error, !!data.error);
+                input.value = ''; // Clear the file input
+                updateDisplays();
+            })
+            .catch(error => showMessage(error.toString(), true))
+            .finally(() => {
+                uploadButton.disabled = false;
+                uploadButton.textContent = 'Upload Image';
+            });
+    }
+
+    function getDrawingStatus(deviceId) {
+        return fetch('/displays/' + deviceId + '/drawing-status')
+            .then(response => response.json());
+    }
+
+    async function updateDisplays() {
+        const displaysDiv = document.getElementById('displays');
+
+        try {
+            const displays = await fetch('/displays').then(r => r.json());
+
+            // Clear display if no displays connected
+            if (displays.length === 0) {
+                displaysDiv.innerHTML = 'No displays connected';
+                displayCards.clear();
+                return;
+            }
+
+            // Add new displays and update existing ones
+            for (const display of displays) {
+                if (!displayCards.has(display.deviceId)) {
+                    const card = createDisplayCard(display);
+                    displaysDiv.appendChild(card);
+                    displayCards.set(display.deviceId, card);
+                }
+
+                const drawingStatus = await getDrawingStatus(display.deviceId);
+                updateDisplayStatus(display.deviceId, display.connected, drawingStatus);
+            }
+
+            // Remove disconnected displays
+            for (const [deviceId, card] of displayCards) {
+                if (!displays.find(d => d.deviceId === deviceId)) {
+                    card.remove();
+                    displayCards.delete(deviceId);
+                }
+            }
+
+        } catch (error) {
+            displaysDiv.innerHTML = 'Error loading displays: ' + error;
+            showMessage('Error loading displays: ' + error, true);
+        }
+    }
+
+    // Initial update
+    updateDisplays();
+
+    // Refresh every 5 seconds
+    setInterval(updateDisplays, 5000);
+</script>
+</body>
+</html>
