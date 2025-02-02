@@ -185,7 +185,7 @@
         fetch(`/displays/${deviceId}/image`)
             .then(response => response.json())
             .then(data => {
-                if (!data.blackBuffer || !data.colorBuffer) return;
+                if (!data.displayBuffer) return;
 
                 const canvas = document.getElementById(`canvas-${deviceId}`);
                 if (!canvas) return;
@@ -193,8 +193,12 @@
                 const ctx = canvas.getContext('2d');
                 const imageData = ctx.createImageData(data.width, data.height);
 
-                const blackBuffer = Uint8Array.from(atob(data.blackBuffer), c => c.charCodeAt(0));
-                const colorBuffer = Uint8Array.from(atob(data.colorBuffer), c => c.charCodeAt(0));
+                // Get display type from the card's display-type span
+                const displayTypeSpan = document.querySelector(`#status-${deviceId} .display-type`);
+                const displayType = displayTypeSpan.textContent;
+
+                const displayBuffer = Uint8Array.from(atob(data.displayBuffer), c => c.charCodeAt(0));
+                const bufferHalfLength = displayBuffer.length / 2;
 
                 for (let y = 0; y < data.height; y++) {
                     for (let x = 0; x < data.width; x++) {
@@ -202,23 +206,41 @@
                         const bytePos = Math.floor((y * data.width + x) / 8);
                         const bitPos = 7 - (x % 8);
 
-                        const isBlack = !(blackBuffer[bytePos] & (1 << bitPos));
-                        const isColor = !(colorBuffer[bytePos] & (1 << bitPos));
+                        // Default to white
+                        let r = 255, g = 255, b = 255;
 
-                        if (isBlack) {
-                            imageData.data[i] = 0;
-                            imageData.data[i+1] = 0;
-                            imageData.data[i+2] = 0;
-                        } else if (isColor) {
-                            imageData.data[i] = 255;
-                            imageData.data[i+1] = 0;
-                            imageData.data[i+2] = 0;
-                        } else {
-                            imageData.data[i] = 255;
-                            imageData.data[i+1] = 255;
-                            imageData.data[i+2] = 255;
+                        switch(displayType) {
+                            case 'BW': {
+                                const isBlack = !(displayBuffer[bytePos] & (1 << bitPos));
+                                if (isBlack) {
+                                    r = g = b = 0;
+                                }
+                                break;
+                            }
+                            case 'BWR':
+                            case 'BWY': {
+                                const isBlack = !(displayBuffer[bytePos] & (1 << bitPos));
+                                const isColor = !(displayBuffer[bytePos + bufferHalfLength] & (1 << bitPos));
+
+                                if (isBlack) {
+                                    r = g = b = 0;
+                                } else if (isColor) {
+                                    if (displayType === 'BWR') {
+                                        // Red
+                                        r = 255; g = 0; b = 0;
+                                    } else {
+                                        // Yellow
+                                        r = 255; g = 255; b = 0;
+                                    }
+                                }
+                                break;
+                            }
                         }
-                        imageData.data[i+3] = 255;
+
+                        imageData.data[i] = r;
+                        imageData.data[i+1] = g;
+                        imageData.data[i+2] = b;
+                        imageData.data[i+3] = 255; // Alpha
                     }
                 }
 

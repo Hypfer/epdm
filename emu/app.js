@@ -1,21 +1,23 @@
 const net = require('net');
 const EventEmitter = require('events');
+const DisplayTypes = require("../lib/DisplayTypes");
 
 class DisplayEmulator extends EventEmitter {
-    constructor(width = 960, height = 640, deviceId = null) {
+    constructor(width = 960, height = 640, deviceId = null, displayType = 'BWR') {
         super();
         this.width = width;
         this.height = height;
         this.deviceId = deviceId || `epd-frame-${Math.random().toString(16).slice(2, 8)}`;
+        this.displayType = displayType;
         this.connected = false;
         this.pageHeight = 16;
         this.reconnectTimer = null;
         this.host = null;
         this.port = null;
 
-        // Emulate display buffers
-        this.blackBuffer = Buffer.alloc((this.width * this.height) / 8, 0xFF);
-        this.colorBuffer = Buffer.alloc((this.width * this.height) / 8, 0xFF);
+        // Calculate buffer size based on display type
+        const totalPixels = (this.width * this.height);
+        this.displayBuffer = Buffer.alloc(totalPixels / (8 / DisplayTypes[this.displayType].bitsPerPixel), 0xFF);
 
         // State machine
         this.state = 'WAITING_COMMAND';
@@ -34,6 +36,7 @@ class DisplayEmulator extends EventEmitter {
 
         this.socket = new net.Socket();
 
+
         this.socket.on('connect', () => {
             console.log(`[${this.deviceId}] Connected to server`);
             this.connected = true;
@@ -42,10 +45,11 @@ class DisplayEmulator extends EventEmitter {
                 this.reconnectTimer = null;
             }
 
-            const hello = `HELLO:${this.deviceId},BWR,${this.width},${this.height},${this.pageHeight}\n`;
+            const hello = `HELLO:${this.deviceId},${this.displayType},${this.width},${this.height},${this.pageHeight}\n`;
             console.log(`[${this.deviceId}] Sending: ${hello.trim()}`);
             this.socket.write(hello);
         });
+
 
         this.socket.on('data', (data) => {
             this.handleData(data);
@@ -171,12 +175,17 @@ class DisplayEmulator extends EventEmitter {
             console.log(`[${this.deviceId}] Data size mismatch. Expected: ${this.expectedDataSize}, Got: ${this.receivedDataSize}`);
             this.socket.write('NACK\n');
         } else {
-            const blackData = this.currentPageData.slice(0, this.expectedDataSize/2);
-            const colorData = this.currentPageData.slice(this.expectedDataSize/2, this.expectedDataSize);
+            const pageOffset = this.currentPageNum * (this.width * this.pageHeight * DisplayTypes[this.displayType].bitsPerPixel / 8);
 
-            const pageOffset = this.currentPageNum * (this.width * this.pageHeight / 8);
-            blackData.copy(this.blackBuffer, pageOffset);
-            colorData.copy(this.colorBuffer, pageOffset);
+            switch(this.displayType) {
+                case 'BW':
+                    this.currentPageData.copy(this.displayBuffer, pageOffset);
+                    break;
+                case 'BWR':
+                case 'BWY':
+                    this.currentPageData.copy(this.displayBuffer, pageOffset);
+                    break;
+            }
 
             console.log(`[${this.deviceId}] Page ${this.currentPageNum} processed successfully`);
             this.socket.write('ACK\n');
@@ -209,7 +218,7 @@ if (require.main === module) {
         process.exit(1);
     }
 
-    const emulator = new DisplayEmulator(960, 640, 'epd-frame-EMU');
+    const emulator = new DisplayEmulator(960, 640, 'epd-frame-EMU', "BW");
     emulator.connect(process.env.EPD_HOST, parseInt(process.env.EPD_PORT));
 
     // Handle process signals gracefully
