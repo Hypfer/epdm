@@ -163,8 +163,9 @@
                 </div>
             </div>
         </div>
-        <canvas class="display-preview" id="canvas-${display.deviceId}" 
-                width="${display.width}" height="${display.height}"></canvas>
+        <img class="display-preview" id="view-${display.deviceId}" 
+             width="${display.width}" height="${display.height}"
+             src="/displays/${display.deviceId}/view">
         <div class="image-upload">
             <input type="file" id="image-${display.deviceId}" accept="image/*">
             <button onclick="uploadImage('${display.deviceId}')">Upload Image</button>
@@ -177,76 +178,16 @@
                 Reboot
             </button>
         </div>
-    `;
+        `;
         return card;
     }
 
     function updateDisplayContent(deviceId) {
-        fetch(`/displays/${deviceId}/image`)
-            .then(response => response.json())
-            .then(data => {
-                if (!data.displayBuffer) return;
-
-                const canvas = document.getElementById(`canvas-${deviceId}`);
-                if (!canvas) return;
-
-                const ctx = canvas.getContext('2d');
-                const imageData = ctx.createImageData(data.width, data.height);
-
-                // Get display type from the card's display-type span
-                const displayTypeSpan = document.querySelector(`#status-${deviceId} .display-type`);
-                const displayType = displayTypeSpan.textContent;
-
-                const displayBuffer = Uint8Array.from(atob(data.displayBuffer), c => c.charCodeAt(0));
-                const bufferHalfLength = displayBuffer.length / 2;
-
-                for (let y = 0; y < data.height; y++) {
-                    for (let x = 0; x < data.width; x++) {
-                        const i = (y * data.width + x) * 4;
-                        const bytePos = Math.floor((y * data.width + x) / 8);
-                        const bitPos = 7 - (x % 8);
-
-                        // Default to white
-                        let r = 255, g = 255, b = 255;
-
-                        switch(displayType) {
-                            case 'BW': {
-                                const isBlack = !(displayBuffer[bytePos] & (1 << bitPos));
-                                if (isBlack) {
-                                    r = g = b = 0;
-                                }
-                                break;
-                            }
-                            case 'BWR':
-                            case 'BWY': {
-                                const isBlack = !(displayBuffer[bytePos] & (1 << bitPos));
-                                const isColor = !(displayBuffer[bytePos + bufferHalfLength] & (1 << bitPos));
-
-                                if (isBlack) {
-                                    r = g = b = 0;
-                                } else if (isColor) {
-                                    if (displayType === 'BWR') {
-                                        // Red
-                                        r = 255; g = 0; b = 0;
-                                    } else {
-                                        // Yellow
-                                        r = 255; g = 255; b = 0;
-                                    }
-                                }
-                                break;
-                            }
-                        }
-
-                        imageData.data[i] = r;
-                        imageData.data[i+1] = g;
-                        imageData.data[i+2] = b;
-                        imageData.data[i+3] = 255; // Alpha
-                    }
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-            })
-            .catch(error => console.error('Error updating display content:', error));
+        const img = document.getElementById(`view-${deviceId}`);
+        if (img) {
+            // Add timestamp to force reload
+            img.src = `/displays/${deviceId}/view?t=${Date.now()}`;
+        }
     }
 
     function updateDisplayStatus(deviceId, connected) {
