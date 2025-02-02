@@ -4,7 +4,8 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "emu": "node emu/app.js"
   },
   "dependencies": {
     "canvas": "^3.1.0",
