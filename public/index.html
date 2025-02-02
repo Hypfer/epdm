@@ -24,16 +24,6 @@
         }
         .connected { background: #c8e6c9; color: #2e7d32; }
         .disconnected { background: #ffcdd2; color: #c62828; }
-        .drawing-status {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 14px;
-            margin-left: 10px;
-        }
-        .drawing { background: #fff176; color: #f57f17; }
-        .idle { background: #b2dfdb; color: #00695c; }
-        .pending { background: #ffcc80; color: #ef6c00; }
 
         button {
             background: #2196F3;
@@ -72,30 +62,14 @@
         .refresh-button:hover {
             background: #388E3C;
         }
-        .status-spinner {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            margin-right: 5px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
         .display-status {
             margin-bottom: 10px;
         }
-
         .display-preview {
             margin: 10px 0;
             border: 1px solid #ccc;
             background: #fff;
+            max-width: 100%;
         }
     </style>
 </head>
@@ -105,7 +79,7 @@
 <div id="displays"></div>
 
 <script>
-    let displayCards = new Map(); // Store display card references
+    let displayCards = new Map();
 
     function showMessage(message, isError = false) {
         const div = document.createElement('div');
@@ -126,30 +100,30 @@
         const card = document.createElement('div');
         card.className = 'display-card';
         card.innerHTML = `
-                <div class="display-status" id="status-${display.deviceId}">
-                    <h2>
-                        ${display.deviceId}
-                        <span class="status connected">Connected</span>
-                    </h2>
-                    <div class="status-info">
-                        <p>Resolution: ${display.width}x${display.height}</p>
-                    </div>
+            <div class="display-status" id="status-${display.deviceId}">
+                <h2>
+                    ${display.deviceId}
+                    <span class="status connected">Connected</span>
+                </h2>
+                <div class="status-info">
+                    <p>Resolution: ${display.width}x${display.height}</p>
                 </div>
-                <canvas class="display-preview" id="canvas-${display.deviceId}" 
-                        width="${display.width}" height="${display.height}"></canvas>
-                <div class="image-upload">
-                    <input type="file" id="image-${display.deviceId}" accept="image/*">
-                    <button onclick="uploadImage('${display.deviceId}')">Upload Image</button>
-                </div>
-                <div>
-                    <button onclick="sendCommand('${display.deviceId}', 'REFRESH')" class="refresh-cmd">
-                        Refresh Display
-                    </button>
-                    <button onclick="sendCommand('${display.deviceId}', 'REBOOT')" class="danger">
-                        Reboot
-                    </button>
-                </div>
-            `;
+            </div>
+            <canvas class="display-preview" id="canvas-${display.deviceId}" 
+                    width="${display.width}" height="${display.height}"></canvas>
+            <div class="image-upload">
+                <input type="file" id="image-${display.deviceId}" accept="image/*">
+                <button onclick="uploadImage('${display.deviceId}')">Upload Image</button>
+            </div>
+            <div>
+                <button onclick="sendCommand('${display.deviceId}', 'REFRESH')" class="refresh-cmd">
+                    Refresh Display
+                </button>
+                <button onclick="sendCommand('${display.deviceId}', 'REBOOT')" class="danger">
+                    Reboot
+                </button>
+            </div>
+        `;
         return card;
     }
 
@@ -207,14 +181,13 @@
         statusSpan.className = `status ${connected ? 'connected' : 'disconnected'}`;
         statusSpan.textContent = connected ? 'Connected' : 'Disconnected';
 
-        // Update button states
         const card = statusDiv.closest('.display-card');
         const buttons = card.querySelectorAll('button');
         const fileInput = card.querySelector('input[type="file"]');
 
         buttons.forEach(button => button.disabled = !connected);
         fileInput.disabled = !connected;
-        
+
         updateDisplayContent(deviceId);
     }
 
@@ -246,7 +219,6 @@
         const formData = new FormData();
         formData.append('image', file);
 
-        // Disable the upload button during upload
         const uploadButton = input.nextElementSibling;
         uploadButton.disabled = true;
         uploadButton.textContent = 'Uploading...';
@@ -258,7 +230,7 @@
             .then(response => response.json())
             .then(data => {
                 showMessage(data.message || data.error, !!data.error);
-                input.value = ''; // Clear the file input
+                input.value = '';
                 updateDisplays();
             })
             .catch(error => showMessage(error.toString(), true))
@@ -267,12 +239,6 @@
                 uploadButton.textContent = 'Upload Image';
             });
     }
-
-    function getDrawingStatus(deviceId) {
-        return fetch('/displays/' + deviceId + '/drawing-status')
-            .then(response => response.json());
-    }
-
 
     async function updateDisplays() {
         const displaysDiv = document.getElementById('displays');
@@ -309,10 +275,7 @@
         }
     }
 
-    // Initial update
     updateDisplays();
-
-    // Refresh every 5 seconds
     setInterval(updateDisplays, 5000);
 </script>
 </body>
