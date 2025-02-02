@@ -2,6 +2,10 @@
 #include <WiFi.h>
 #include "config.h"
 
+const char CMD_DELIM = ':';
+const char ARG_DELIM = ',';
+const uint16_t PAGE_HEIGHT = 48;
+
 void doSomethingUsefulInsteadOfWaiting() {
     yield();
     delay(1);
@@ -120,9 +124,12 @@ bool connectToServer() {
 
     failedConnectCount = 0;  // Reset counter on successful connection
 
-    // Send hello message with device info
-    String hello = "HELLO " + deviceId + " " + 
-                  String(GxEPD2_1160c::WIDTH) + " " + String(GxEPD2_1160c::HEIGHT) + "\n";
+    String hello = String("HELLO") + CMD_DELIM + 
+                  deviceId + ARG_DELIM + 
+                  "BWR" + ARG_DELIM +
+                  String(GxEPD2_1160c::WIDTH) + ARG_DELIM + 
+                  String(GxEPD2_1160c::HEIGHT) + ARG_DELIM +
+                  String(PAGE_HEIGHT) + "\n";
     client.print(hello);
     
     // Wait for ACK
@@ -139,18 +146,23 @@ bool connectToServer() {
 
 void processServerCommands() {
     while (client.connected() && client.available()) {
-        String cmd = client.readStringUntil('\n');
-        cmd.trim();
-        Serial.print("Received command: "); Serial.println(cmd);
+        String cmdLine = client.readStringUntil('\n');
+        cmdLine.trim();
+        Serial.print("Received command: "); Serial.println(cmdLine);
         
-        if (cmd.startsWith("PAGE")) {
-            int firstSpace = cmd.indexOf(' ');
-            int secondSpace = cmd.indexOf(' ', firstSpace + 1);
+        int cmdDelimPos = cmdLine.indexOf(CMD_DELIM);
+        if (cmdDelimPos == -1) continue;
+        
+        String cmd = cmdLine.substring(0, cmdDelimPos);
+        String args = cmdLine.substring(cmdDelimPos + 1);
+        
+        if (cmd == "PAGE") {
+            int firstDelim = args.indexOf(ARG_DELIM);
+            if (firstDelim == -1) continue;
             
-            uint16_t pageNum = cmd.substring(firstSpace + 1, secondSpace).toInt();
-            uint32_t size = cmd.substring(secondSpace + 1).toInt();
+            uint16_t pageNum = args.substring(0, firstDelim).toInt();
+            uint32_t size = args.substring(firstDelim + 1).toInt();
             
-            const uint16_t PAGE_HEIGHT = 16;
             uint32_t bytesPerPage = (GxEPD2_1160c::WIDTH * PAGE_HEIGHT) / 8;
             uint32_t totalSize = bytesPerPage * 2;
 
@@ -159,6 +171,14 @@ void processServerCommands() {
             
             if (size != totalSize) {
                 Serial.println("Size mismatch!");
+                client.println("NACK");
+                return;
+            }
+
+            // Wait for DATA_START
+            String marker = client.readStringUntil('\n');
+            if (marker != "DATA_START") {
+                Serial.println("Missing DATA_START marker!");
                 client.println("NACK");
                 return;
             }
@@ -190,6 +210,16 @@ void processServerCommands() {
                     client.println("NACK");
                     return;
                 }
+            }
+
+            // Wait for DATA_END
+            marker = client.readStringUntil('\n');
+            if (marker != "DATA_END") {
+                Serial.println("Missing DATA_END marker!");
+                delete[] black_buffer;
+                delete[] color_buffer;
+                client.println("NACK");
+                return;
             }
 
             if (bytesRead == totalSize) {

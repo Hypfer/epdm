@@ -78,6 +78,45 @@
             margin-left: auto;
             margin-right: auto;
         }
+
+        .device-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 16px;
+            font-weight: 500;
+            color: #2196F3;
+        }
+
+        .display-type {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            background: #e3f2fd;
+            color: #1976D2;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
@@ -107,30 +146,38 @@
         const card = document.createElement('div');
         card.className = 'display-card';
         card.innerHTML = `
-            <div class="display-status" id="status-${display.deviceId}">
-                <h2>
-                    ${display.deviceId}
-                    <span class="status connected">Connected</span>
-                </h2>
-                <div class="status-info">
-                    <p>Resolution: ${display.width}x${display.height}</p>
+        <div class="display-status" id="status-${display.deviceId}">
+            <h2>
+                ${display.deviceId}
+                <span class="display-type">${display.displayType}</span>
+                <span class="status connected">Connected</span>
+            </h2>
+            <div class="device-info">
+                <div class="info-item">
+                    <span class="info-label">Resolution</span>
+                    <span class="info-value">${display.width} × ${display.height}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Page Height</span>
+                    <span class="info-value">${display.pageHeight} rows</span>
                 </div>
             </div>
-            <canvas class="display-preview" id="canvas-${display.deviceId}" 
-                    width="${display.width}" height="${display.height}"></canvas>
-            <div class="image-upload">
-                <input type="file" id="image-${display.deviceId}" accept="image/*">
-                <button onclick="uploadImage('${display.deviceId}')">Upload Image</button>
-            </div>
-            <div>
-                <button onclick="sendCommand('${display.deviceId}', 'REFRESH')" class="refresh-cmd">
-                    Refresh Display
-                </button>
-                <button onclick="sendCommand('${display.deviceId}', 'REBOOT')" class="danger">
-                    Reboot
-                </button>
-            </div>
-        `;
+        </div>
+        <canvas class="display-preview" id="canvas-${display.deviceId}" 
+                width="${display.width}" height="${display.height}"></canvas>
+        <div class="image-upload">
+            <input type="file" id="image-${display.deviceId}" accept="image/*">
+            <button onclick="uploadImage('${display.deviceId}')">Upload Image</button>
+        </div>
+        <div>
+            <button onclick="sendCommand('${display.deviceId}', 'REFRESH')" class="refresh-cmd">
+                Refresh Display
+            </button>
+            <button onclick="sendCommand('${display.deviceId}', 'REBOOT')" class="danger">
+                Reboot
+            </button>
+        </div>
+    `;
         return card;
     }
 

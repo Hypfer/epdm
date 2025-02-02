@@ -42,7 +42,8 @@ class DisplayEmulator extends EventEmitter {
                 this.reconnectTimer = null;
             }
 
-            const hello = `HELLO ${this.deviceId} ${this.width} ${this.height}\n`;
+            const hello = `HELLO:${this.deviceId},BWR,${this.width},${this.height},${this.pageHeight}\n`;
+            console.log(`[${this.deviceId}] Sending: ${hello.trim()}`);
             this.socket.write(hello);
         });
 
@@ -79,62 +80,97 @@ class DisplayEmulator extends EventEmitter {
     }
 
     handleData(data) {
-        if (this.state === 'WAITING_COMMAND') {
-            const commandStr = data.toString();
-            if (!commandStr.includes('\n')) return; // Wait for complete command
+        if (this.state === 'RECEIVING_PAGE_DATA') {
+            // Check if this chunk contains DATA_END
+            const dataEndIndex = data.indexOf('DATA_END\n');
+            if (dataEndIndex !== -1) {
+                // Split the data at DATA_END
+                const binaryPart = data.slice(0, dataEndIndex);
+                this.handlePageData(binaryPart);
+                this.processPageData();
 
-            const lines = commandStr.split('\n');
-            const command = lines[0].trim();
-
-            if (command === 'ACK') {
-                console.log(`[${this.deviceId}] Received ACK`);
-                this.emit('ack');
-                return;
-            }
-
-            if (command.startsWith('PAGE')) {
-                const [, pageNum, size] = command.split(' ');
-                console.log(`[${this.deviceId}] Receiving page ${pageNum}, size ${size}`);
-
-                this.currentPageNum = parseInt(pageNum);
-                this.expectedDataSize = parseInt(size);
-                this.receivedDataSize = 0;
-                this.currentPageData = Buffer.alloc(0);
-
-                this.state = 'RECEIVING_PAGE_DATA';
-
-                // Handle any remaining data as page data
-                if (lines.length > 1) {
-                    const remainingData = data.slice(data.indexOf('\n') + 1);
-                    this.handlePageData(remainingData);
+                // Process any remaining data after DATA_END as new commands
+                const remainingData = data.slice(dataEndIndex + 9); // 9 is length of "DATA_END\n"
+                if (remainingData.length > 0) {
+                    this.handleData(remainingData);
                 }
-                return;
+            } else {
+                // Just binary data
+                this.handlePageData(data);
             }
-
-            if (command === 'REFRESH') {
-                console.log(`[${this.deviceId}] Refresh command received`);
-                setTimeout(() => {
-                    this.socket.write('ACK\n');
-                    console.log(`[${this.deviceId}] Display refreshed`);
-                }, 1000);
-                return;
-            }
-
-            console.log(`[${this.deviceId}] Unknown command:`, command);
             return;
         }
 
-        if (this.state === 'RECEIVING_PAGE_DATA') {
-            this.handlePageData(data);
+        // Handle text commands
+        const dataStr = data.toString();
+        const lines = dataStr.split('\n');
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            console.log(`[${this.deviceId}] Processing line: "${line}"`);
+
+            if (this.state === 'WAITING_COMMAND') {
+                if (line === 'ACK') {
+                    console.log(`[${this.deviceId}] Received ACK`);
+                    this.emit('ack');
+                    continue;
+                }
+
+                const [cmd, args] = line.split(':');
+                console.log(`[${this.deviceId}] Command: ${cmd}, Args: ${args}`);
+
+                if (cmd === 'PAGE') {
+                    const [pageNum, size] = args.split(',');
+                    console.log(`[${this.deviceId}] Receiving page ${pageNum}, size ${size}`);
+
+                    this.currentPageNum = parseInt(pageNum);
+                    this.expectedDataSize = parseInt(size);
+                    this.receivedDataSize = 0;
+                    this.currentPageData = Buffer.alloc(0);
+                    this.state = 'WAITING_DATA_START';
+                }
+                else if (cmd === 'REFRESH') {
+                    console.log(`[${this.deviceId}] Refresh command received`);
+                    setTimeout(() => {
+                        this.socket.write('ACK\n');
+                        console.log(`[${this.deviceId}] Display refreshed`);
+                    }, 1000);
+                }
+                else if (cmd === 'REBOOT') {
+                    console.log(`[${this.deviceId}] Reboot command received`);
+                    this.socket.write('ACK\n');
+                    process.exit(0);
+                }
+            }
+            else if (this.state === 'WAITING_DATA_START' && line === 'DATA_START') {
+                console.log(`[${this.deviceId}] Received DATA_START`);
+                this.state = 'RECEIVING_PAGE_DATA';
+
+                // Process any remaining data as binary
+                const remainingData = data.slice(data.indexOf(line) + line.length + 1);
+                if (remainingData.length > 0) {
+                    this.handleData(remainingData);
+                }
+                break;
+            }
         }
     }
 
     handlePageData(data) {
         this.currentPageData = Buffer.concat([this.currentPageData, data]);
         this.receivedDataSize += data.length;
+        console.log(`[${this.deviceId}] Total received: ${this.receivedDataSize}/${this.expectedDataSize} bytes`);
+    }
 
-        if (this.receivedDataSize >= this.expectedDataSize) {
-            // Process the complete page
+    processPageData() {
+        console.log(`[${this.deviceId}] Processing page data: ${this.receivedDataSize}/${this.expectedDataSize} bytes`);
+
+        if (this.receivedDataSize !== this.expectedDataSize) {
+            console.log(`[${this.deviceId}] Data size mismatch. Expected: ${this.expectedDataSize}, Got: ${this.receivedDataSize}`);
+            this.socket.write('NACK\n');
+        } else {
             const blackData = this.currentPageData.slice(0, this.expectedDataSize/2);
             const colorData = this.currentPageData.slice(this.expectedDataSize/2, this.expectedDataSize);
 
@@ -142,21 +178,15 @@ class DisplayEmulator extends EventEmitter {
             blackData.copy(this.blackBuffer, pageOffset);
             colorData.copy(this.colorBuffer, pageOffset);
 
-            console.log(`[${this.deviceId}] Page ${this.currentPageNum} received and processed`);
+            console.log(`[${this.deviceId}] Page ${this.currentPageNum} processed successfully`);
             this.socket.write('ACK\n');
-
-            // Reset state
-            this.state = 'WAITING_COMMAND';
-            this.currentPageData = null;
-            this.expectedDataSize = 0;
-            this.receivedDataSize = 0;
-
-            // Handle any extra data as new command
-            if (this.receivedDataSize > this.expectedDataSize) {
-                const extraData = this.currentPageData.slice(this.expectedDataSize);
-                this.handleData(extraData);
-            }
         }
+
+        // Reset state
+        this.state = 'WAITING_COMMAND';
+        this.currentPageData = Buffer.alloc(0);
+        this.expectedDataSize = 0;
+        this.receivedDataSize = 0;
     }
 
     disconnect() {
