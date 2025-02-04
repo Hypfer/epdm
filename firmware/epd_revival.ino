@@ -163,11 +163,16 @@ void processServerCommands() {
             uint16_t pageNum = args.substring(0, firstDelim).toInt();
             uint32_t size = args.substring(firstDelim + 1).toInt();
             
-            uint32_t bytesPerPage = (GxEPD2_1160c::WIDTH * PAGE_HEIGHT) / 8;
-            uint32_t totalSize = bytesPerPage * 2;
+            // Calculate remaining rows for this page
+            uint16_t remainingRows = min(
+                PAGE_HEIGHT,
+                static_cast<uint16_t>(GxEPD2_1160c::HEIGHT - (pageNum * PAGE_HEIGHT))
+            );
+            uint32_t bytesPerPage = (GxEPD2_1160c::WIDTH * remainingRows) / 8;
+            uint32_t totalSize = bytesPerPage * 2;  // For black and color
 
-            Serial.printf("Page %d, received size %d, expected size %d (bytesPerPage: %d)\n", 
-                pageNum, size, totalSize, bytesPerPage);
+            Serial.printf("Page %d, received size %d, expected size %d (bytesPerPage: %d, rows: %d)\n", 
+                pageNum, size, totalSize, bytesPerPage, remainingRows);
             
             if (size != totalSize) {
                 Serial.println("Size mismatch!");
@@ -204,7 +209,20 @@ void processServerCommands() {
                 yield();
 
                 if (millis() - startTime > 5000) {
-                    Serial.println("Timeout waiting for data");
+                    Serial.printf("Timeout waiting for data after %dms. Bytes read: %d/%d (%.1f%%). Last available: %d\n",
+                        millis() - startTime,
+                        bytesRead,
+                        totalSize,
+                        (bytesRead * 100.0) / totalSize,
+                        client.available()
+                    );
+                    
+                    Serial.printf("Network status - Connected: %d, WiFi Status: %d, RSSI: %d dBm\n",
+                        client.connected(),
+                        WiFi.status(),
+                        WiFi.RSSI()
+                    );
+                    
                     delete[] black_buffer;
                     delete[] color_buffer;
                     client.println("NACK");
@@ -224,10 +242,10 @@ void processServerCommands() {
 
             if (bytesRead == totalSize) {
                 uint16_t y = pageNum * PAGE_HEIGHT;
-                Serial.printf("Writing image at y=%d\n", y);
+                Serial.printf("Writing image at y=%d (rows: %d)\n", y, remainingRows);
                 
                 display.writeImage(black_buffer, color_buffer, 0, y, 
-                                 GxEPD2_1160c::WIDTH, PAGE_HEIGHT);
+                                 GxEPD2_1160c::WIDTH, remainingRows);
                                       
                 Serial.println("Sending ACK");
                 client.println("ACK");
@@ -265,7 +283,7 @@ void setup() {
     deviceId = getDeviceId();
     WiFi.setHostname(deviceId.c_str());
 
-    showConnectionStatus(false);
+    //showConnectionStatus(false);
     
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
