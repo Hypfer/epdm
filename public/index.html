@@ -161,10 +161,22 @@
                     <span class="info-label">Page Height</span>
                     <span class="info-value">${display.pageHeight} rows</span>
                 </div>
+                <div class="info-item">
+                    <span class="info-label">Signal Strength</span>
+                    <span class="info-value" id="rssi-${display.deviceId}">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Uptime</span>
+                    <span class="info-value" id="uptime-${display.deviceId}">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Free Memory</span>
+                    <span class="info-value" id="heap-${display.deviceId}">--</span>
+                </div>
             </div>
         </div>
         <img class="display-preview" id="view-${display.deviceId}" 
-             width="${display.width}" height="${display.height}"
+             width="${display.width}"
              src="/displays/${display.deviceId}/view">
         <div class="image-upload">
             <input type="file" id="image-${display.deviceId}" accept="image/*">
@@ -199,11 +211,11 @@
         statusSpan.textContent = connected ? 'Connected' : 'Disconnected';
 
         const card = statusDiv.closest('.display-card');
-        const buttons = card.querySelectorAll('button');
-        const fileInput = card.querySelector('input[type="file"]');
+        const commandButtons = card.querySelectorAll('button.refresh-cmd, button.danger');
+        // Don't disable the file input and upload button
 
-        buttons.forEach(button => button.disabled = !connected);
-        fileInput.disabled = !connected;
+        // Only disable the command buttons when disconnected
+        commandButtons.forEach(button => button.disabled = !connected);
 
         updateDisplayContent(deviceId);
     }
@@ -277,6 +289,9 @@
                 }
 
                 updateDisplayStatus(display.deviceId, display.connected);
+                if (display.connected) {
+                    updateDisplayMetrics(display.deviceId);
+                }
             }
 
             for (const [deviceId, card] of displayCards) {
@@ -290,6 +305,32 @@
             displaysDiv.innerHTML = 'Error loading displays: ' + error;
             showMessage('Error loading displays: ' + error, true);
         }
+    }
+
+    function updateDisplayMetrics(deviceId) {
+        fetch(`/displays/${deviceId}/metrics`)
+            .then(response => response.json())
+            .then(metrics => {
+                const rssiElem = document.getElementById(`rssi-${deviceId}`);
+                const uptimeElem = document.getElementById(`uptime-${deviceId}`);
+                const heapElem = document.getElementById(`heap-${deviceId}`);
+
+                if (rssiElem && metrics.rssi !== null) {
+                    rssiElem.textContent = `${metrics.rssi} dBm`;
+                }
+
+                if (uptimeElem && metrics.uptime !== null) {
+                    const hours = Math.floor(metrics.uptime / 3600);
+                    const minutes = Math.floor((metrics.uptime % 3600) / 60);
+                    const seconds = metrics.uptime % 60;
+                    uptimeElem.textContent = `${hours}h ${minutes}m ${seconds}s`;
+                }
+
+                if (heapElem && metrics.freeHeap !== null) {
+                    heapElem.textContent = `${(metrics.freeHeap / 1024).toFixed(1)} KB`;
+                }
+            })
+            .catch(error => console.error(`Error updating metrics for ${deviceId}:`, error));
     }
 
     updateDisplays();

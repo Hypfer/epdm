@@ -14,6 +14,7 @@ class DisplayEmulator extends EventEmitter {
         this.reconnectTimer = null;
         this.host = null;
         this.port = null;
+        this.lastPingTime = 0;
 
         // Calculate buffer size based on display type
         const totalPixels = (this.width * this.height);
@@ -36,7 +37,6 @@ class DisplayEmulator extends EventEmitter {
 
         this.socket = new net.Socket();
 
-
         this.socket.on('connect', () => {
             console.log(`[${this.deviceId}] Connected to server`);
             this.connected = true;
@@ -49,7 +49,6 @@ class DisplayEmulator extends EventEmitter {
             console.log(`[${this.deviceId}] Sending: ${hello.trim()}`);
             this.socket.write(hello);
         });
-
 
         this.socket.on('data', (data) => {
             this.handleData(data);
@@ -125,7 +124,13 @@ class DisplayEmulator extends EventEmitter {
                 const [cmd, args] = line.split(':');
                 console.log(`[${this.deviceId}] Command: ${cmd}, Args: ${args}`);
 
-                if (cmd === 'PAGE') {
+                if (cmd === 'PING') {
+                    this.lastPingTime = parseInt(args);
+                    console.log(`[${this.deviceId}] Ping received, timestamp: ${this.lastPingTime}`);
+                    const response = `PONG:-50,${Math.floor(process.uptime())},${process.memoryUsage().heapUsed}\n`;
+                    this.socket.write(response);
+                }
+                else if (cmd === 'PAGE') {
                     const [pageNum, size] = args.split(',');
                     console.log(`[${this.deviceId}] Receiving page ${pageNum}, size ${size}`);
 

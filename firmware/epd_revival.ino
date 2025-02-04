@@ -5,6 +5,8 @@
 const char CMD_DELIM = ':';
 const char ARG_DELIM = ',';
 const uint16_t PAGE_HEIGHT = 48;
+const unsigned long PING_TIMEOUT = 90000; // 90 seconds
+unsigned long lastPingTime = 0;
 
 void doSomethingUsefulInsteadOfWaiting() {
     yield();
@@ -79,7 +81,7 @@ void showConnectionStatus(bool isError) {
             display.printf("Failed attempts: %d", failedConnectCount);
         }
         
-        // System Uptime
+        // System Uptime and Last Ping
         display.setTextColor(GxEPD_BLACK);
         display.setCursor(50, 500);
         display.print("Uptime: ");
@@ -89,6 +91,15 @@ void showConnectionStatus(bool isError) {
         int minutes = (uptime % 3600) / 60;
         int seconds = uptime % 60;
         display.printf("%02d:%02d:%02d", hours, minutes, seconds);
+
+        if (lastPingTime > 0) {
+            display.setTextColor(GxEPD_BLACK);
+            display.setCursor(50, 550);
+            display.print("Last Ping: ");
+            display.setTextColor(GxEPD_RED);
+            unsigned long pingAge = (millis() - lastPingTime) / 1000;
+            display.printf("%ds ago", pingAge);
+        }
         
     } while (display.nextPage());
 }
@@ -141,6 +152,7 @@ bool connectToServer() {
     }
 
     Serial.println("Connected to server");
+    lastPingTime = millis(); // Initialize ping timer on successful connection
     return true;
 }
 
@@ -156,7 +168,15 @@ void processServerCommands() {
         String cmd = cmdLine.substring(0, cmdDelimPos);
         String args = cmdLine.substring(cmdDelimPos + 1);
         
-        if (cmd == "PAGE") {
+        if (cmd == "PING") {
+            lastPingTime = millis();
+            String response = String("PONG") + CMD_DELIM +
+                            String(WiFi.RSSI()) + ARG_DELIM +
+                            String(millis() / 1000) + ARG_DELIM +
+                            String(ESP.getFreeHeap()) + "\n";
+            client.print(response);
+        }
+        else if (cmd == "PAGE") {
             int firstDelim = args.indexOf(ARG_DELIM);
             if (firstDelim == -1) continue;
             
@@ -300,6 +320,16 @@ void loop() {
         Serial.println("WiFi disconnected. Reconnecting...");
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         delay(5000);
+        return;
+    }
+
+    // Check if we haven't received a ping in too long
+    if (client.connected() && lastPingTime > 0 && 
+        (millis() - lastPingTime) > PING_TIMEOUT) {
+        Serial.println("Ping timeout - disconnecting");
+        client.stop();
+        lastPingTime = 0;
+        showConnectionStatus(true);
         return;
     }
 
