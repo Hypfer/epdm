@@ -7,7 +7,11 @@
             font-family: Arial, sans-serif;
             margin: 20px;
             background: #f0f0f0;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
         }
+
         .display-card {
             background: white;
             border-radius: 8px;
@@ -15,6 +19,7 @@
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+
         .status {
             display: inline-block;
             padding: 5px 10px;
@@ -22,6 +27,7 @@
             font-size: 14px;
             margin-left: 10px;
         }
+
         .connected { background: #c8e6c9; color: #2e7d32; }
         .disconnected { background: #ffcdd2; color: #c62828; }
 
@@ -34,49 +40,45 @@
             cursor: pointer;
             margin: 5px;
         }
+
         button:hover { background: #1976D2; }
         button:disabled {
             background: #cccccc;
             cursor: not-allowed;
         }
+
         button.danger { background: #F44336; }
         button.danger:hover { background: #D32F2F; }
-        button.danger:disabled {
-            background: #cccccc;
-        }
+        button.danger:disabled { background: #cccccc; }
+
         .image-upload {
             margin: 10px 0;
             padding: 10px;
             background: #e3f2fd;
             border-radius: 4px;
         }
+
         .status-info {
             font-size: 14px;
             color: #666;
             margin: 10px 0;
         }
+
         .refresh-button {
             float: right;
             background: #4CAF50;
             margin: 15px;
         }
-        .refresh-button:hover {
-            background: #388E3C;
-        }
-        .display-status {
-            margin-bottom: 10px;
-        }
+
+        .refresh-button:hover { background: #388E3C; }
+
+        .display-status { margin-bottom: 10px; }
+
         .display-preview {
             margin: 10px 0;
             border: 1px solid #ccc;
             background: #fff;
             max-width: 100%;
-        }
-        
-        body {
-            max-width: 1200px;
-            margin-left: auto;
-            margin-right: auto;
         }
 
         .device-info {
@@ -117,6 +119,134 @@
             color: #1976D2;
             margin-left: 10px;
         }
+
+        .history-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+
+        .history-images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .history-images-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .history-image {
+            position: relative;
+            border: 1px solid #ddd;
+            padding: 5px;
+            border-radius: 4px;
+            width: 200px;
+            flex: 0 0 200px;
+        }
+
+        .history-image img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: contain;
+            background: #f8f9fa;
+        }
+
+        .history-timestamp {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .history-controls {
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .history-image .actions {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 5px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .history-image:hover .actions {
+            opacity: 1;
+        }
+
+        .delete-button {
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .restore-button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .refresh-entry {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+            aspect-ratio: 1;
+        }
+
+        .refresh-entry:hover {
+            background: #e3e3e3;
+        }
+
+        .refresh-content {
+            text-align: center;
+            color: #666;
+        }
+
+        .refresh-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .refresh-text {
+            font-size: 14px;
+        }
+
+        .load-more-entry {
+            position: relative;
+            border: 1px solid #ddd;
+            padding: 5px;
+            border-radius: 4px;
+            width: 200px;
+            flex: 0 0 200px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+        }
+
+        .load-more-entry:hover {
+            background: #e3e3e3;
+        }
     </style>
 </head>
 <body>
@@ -125,7 +255,7 @@
 <div id="displays"></div>
 
 <script>
-    let displayCards = new Map();
+    const historyState = new Map();
 
     function showMessage(message, isError = false) {
         const div = document.createElement('div');
@@ -142,62 +272,225 @@
         setTimeout(() => div.remove(), 3000);
     }
 
+    function initHistoryState(deviceId) {
+        if (!historyState.has(deviceId)) {
+            historyState.set(deviceId, {
+                currentPage: 0,
+                itemsPerPage: 12,
+                loading: false,
+                hasMore: true,
+                loadedIds: new Set()
+            });
+        }
+    }
+
+    async function refreshHistory(deviceId) {
+        historyState.set(deviceId, {
+            currentPage: 0,
+            itemsPerPage: 12,
+            loading: false,
+            hasMore: true,
+            loadedIds: new Set()
+        });
+        await loadHistory(deviceId);
+    }
+
+    async function loadHistory(deviceId, append = false) {
+        initHistoryState(deviceId);
+        const state = historyState.get(deviceId);
+
+        if (state.loading || (!append && !state.hasMore)) return;
+
+        state.loading = true;
+        const historyDiv = document.getElementById(`history-${deviceId}`);
+
+        try {
+            const offset = state.currentPage * state.itemsPerPage;
+            const response = await fetch(
+                `/displays/${deviceId}/history?limit=${state.itemsPerPage}&offset=${offset}`
+            );
+            const data = await response.json();
+            const history = data.entries;
+
+            const newEntries = history.filter(entry => !state.loadedIds.has(entry.id));
+
+            const historyHtml = newEntries.map(entry => {
+                state.loadedIds.add(entry.id);
+                return `
+                <div class="history-image" id="history-entry-${entry.id}">
+                    <div class="actions">
+                        <button class="restore-button" 
+                                onclick="restoreHistoryEntry('${deviceId}', ${entry.id})">
+                            Display Again
+                        </button>
+                        <button class="delete-button" 
+                                onclick="deleteHistoryEntry('${deviceId}', ${entry.id})">
+                            Delete
+                        </button>
+                    </div>
+                    <img src="/displays/${deviceId}/history/${entry.id}/view" 
+                         alt="Historical display ${new Date(entry.timestamp).toLocaleString()}">
+                    <div class="history-timestamp">
+                        ${new Date(entry.timestamp).toLocaleString()}
+                    </div>
+                </div>
+            `;
+            }).join('');
+
+            if (append) {
+                const contentDiv = historyDiv.querySelector('.history-images-content');
+                if (contentDiv) {
+                    contentDiv.insertAdjacentHTML('beforeend', historyHtml);
+                }
+
+                // Update the load more button text
+                const loadMoreEntry = historyDiv.querySelector('.load-more-entry .refresh-text');
+                if (loadMoreEntry) {
+                    loadMoreEntry.textContent = `Load more (${state.loadedIds.size} of ${data.metadata.total})`;
+                    // Remove load more button if no more entries
+                    if (!data.metadata.hasMore) {
+                        loadMoreEntry.closest('.load-more-entry').remove();
+                    }
+                }
+            } else {
+                historyDiv.innerHTML = `
+                    <div class="history-images">
+                        <div class="history-images-content">
+                            <div class="history-image refresh-entry" onclick="refreshHistory('${deviceId}')">
+                                <div class="refresh-content">
+                                    <div class="refresh-icon">↻</div>
+                                    <div class="refresh-text">Check for new entries</div>
+                                </div>
+                            </div>
+                            ${historyHtml}
+                            ${data.metadata.hasMore ? `
+                                <div class="history-image load-more-entry" onclick="loadMoreHistory('${deviceId}')">
+                                    <div class="refresh-content">
+                                        <div class="refresh-icon">↓</div>
+                                        <div class="refresh-text">Load more (${state.loadedIds.size} of ${data.metadata.total})</div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+            `;
+            }
+
+            state.hasMore = data.metadata.hasMore;
+            state.currentPage++;
+
+        } catch (error) {
+            if (!append) {
+                historyDiv.innerHTML = 'Error loading history: ' + error;
+            }
+        } finally {
+            state.loading = false;
+        }
+    }
+
+    async function loadMoreHistory(deviceId) {
+        await loadHistory(deviceId, true);
+    }
+
+    async function deleteHistoryEntry(deviceId, entryId) {
+        if (!confirm('Are you sure you want to delete this image from history?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/displays/${deviceId}/history/${entryId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                const element = document.getElementById(`history-entry-${entryId}`);
+                element.remove();
+                showMessage('History entry deleted successfully');
+            } else {
+                throw new Error('Failed to delete entry');
+            }
+        } catch (error) {
+            showMessage('Failed to delete history entry: ' + error, true);
+        }
+    }
+
+    async function restoreHistoryEntry(deviceId, entryId) {
+        try {
+            const response = await fetch(`/displays/${deviceId}/history/${entryId}/restore`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to restore image');
+            }
+
+            showMessage('Image restored to display');
+        } catch (error) {
+            showMessage('Failed to restore image: ' + error, true);
+        }
+    }
+
     function createDisplayCard(display) {
         const card = document.createElement('div');
         card.className = 'display-card';
         card.innerHTML = `
-        <div class="display-status" id="status-${display.deviceId}">
-            <h2>
-                ${display.deviceId}
-                <span class="display-type">${display.displayType}</span>
-                <span class="status connected">Connected</span>
-            </h2>
-            <div class="device-info">
-                <div class="info-item">
-                    <span class="info-label">Resolution</span>
-                    <span class="info-value">${display.width} × ${display.height}</span>
+                <div class="display-status" id="status-${display.deviceId}">
+                    <h2>
+                        ${display.deviceId}
+                        <span class="display-type">${display.displayType}</span>
+                        <span class="status connected">Connected</span>
+                    </h2>
+                    <div class="device-info">
+                        <div class="info-item">
+                            <span class="info-label">Resolution</span>
+                            <span class="info-value">${display.width} × ${display.height}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Page Height</span>
+                            <span class="info-value">${display.pageHeight} rows</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Signal Strength</span>
+                            <span class="info-value" id="rssi-${display.deviceId}">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Uptime</span>
+                            <span class="info-value" id="uptime-${display.deviceId}">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Free Memory</span>
+                            <span class="info-value" id="heap-${display.deviceId}">--</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="info-item">
-                    <span class="info-label">Page Height</span>
-                    <span class="info-value">${display.pageHeight} rows</span>
+                <img class="display-preview" id="view-${display.deviceId}" 
+                     width="${display.width}"
+                     src="/displays/${display.deviceId}/view">
+                <div class="image-upload">
+                    <input type="file" id="image-${display.deviceId}" accept="image/*">
+                    <button onclick="uploadImage('${display.deviceId}')">Upload Image</button>
                 </div>
-                <div class="info-item">
-                    <span class="info-label">Signal Strength</span>
-                    <span class="info-value" id="rssi-${display.deviceId}">--</span>
+                <div>
+                    <button onclick="sendCommand('${display.deviceId}', 'REFRESH')" class="refresh-cmd">
+                        Refresh Display
+                    </button>
+                    <button onclick="sendCommand('${display.deviceId}', 'REBOOT')" class="danger">
+                        Reboot
+                    </button>
                 </div>
-                <div class="info-item">
-                    <span class="info-label">Uptime</span>
-                    <span class="info-value" id="uptime-${display.deviceId}">--</span>
+                <div class="history-section">
+                    <h3>Display History</h3>
+                    <div class="history-images" id="history-${display.deviceId}">
+                        Loading history...
+                    </div>
                 </div>
-                <div class="info-item">
-                    <span class="info-label">Free Memory</span>
-                    <span class="info-value" id="heap-${display.deviceId}">--</span>
-                </div>
-            </div>
-        </div>
-        <img class="display-preview" id="view-${display.deviceId}" 
-             width="${display.width}"
-             src="/displays/${display.deviceId}/view">
-        <div class="image-upload">
-            <input type="file" id="image-${display.deviceId}" accept="image/*">
-            <button onclick="uploadImage('${display.deviceId}')">Upload Image</button>
-        </div>
-        <div>
-            <button onclick="sendCommand('${display.deviceId}', 'REFRESH')" class="refresh-cmd">
-                Refresh Display
-            </button>
-            <button onclick="sendCommand('${display.deviceId}', 'REBOOT')" class="danger">
-                Reboot
-            </button>
-        </div>
-        `;
+            `;
         return card;
     }
 
     function updateDisplayContent(deviceId) {
         const img = document.getElementById(`view-${deviceId}`);
         if (img) {
-            // Add timestamp to force reload
             img.src = `/displays/${deviceId}/view?t=${Date.now()}`;
         }
     }
@@ -212,99 +505,9 @@
 
         const card = statusDiv.closest('.display-card');
         const commandButtons = card.querySelectorAll('button.refresh-cmd, button.danger');
-        // Don't disable the file input and upload button
-
-        // Only disable the command buttons when disconnected
         commandButtons.forEach(button => button.disabled = !connected);
 
         updateDisplayContent(deviceId);
-    }
-
-    function sendCommand(deviceId, command) {
-        fetch('/displays/' + deviceId + '/command', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ command: command })
-        })
-            .then(response => response.json())
-            .then(data => {
-                showMessage(data.message || data.error, !!data.error);
-                if (command === 'REBOOT') {
-                    setTimeout(() => updateDisplays(), 5000);
-                } else {
-                    updateDisplays();
-                }
-            })
-            .catch(error => showMessage(error.toString(), true));
-    }
-
-    function uploadImage(deviceId) {
-        const input = document.getElementById('image-' + deviceId);
-        const file = input.files[0];
-        if (!file) return;
-
-        const formData = new FormData();
-        formData.append('image', file);
-
-        const uploadButton = input.nextElementSibling;
-        uploadButton.disabled = true;
-        uploadButton.textContent = 'Uploading...';
-
-        fetch('/displays/' + deviceId + '/image', {
-            method: 'POST',
-            body: formData
-        })
-            .then(response => response.json())
-            .then(data => {
-                showMessage(data.message || data.error, !!data.error);
-                input.value = '';
-                updateDisplays();
-            })
-            .catch(error => showMessage(error.toString(), true))
-            .finally(() => {
-                uploadButton.disabled = false;
-                uploadButton.textContent = 'Upload Image';
-            });
-    }
-
-    async function updateDisplays() {
-        const displaysDiv = document.getElementById('displays');
-
-        try {
-            const displays = await fetch('/displays').then(r => r.json());
-
-            if (displays.length === 0) {
-                displaysDiv.innerHTML = 'No displays connected';
-                displayCards.clear();
-                return;
-            }
-
-            for (const display of displays) {
-                if (!displayCards.has(display.deviceId)) {
-                    const card = createDisplayCard(display);
-                    displaysDiv.appendChild(card);
-                    displayCards.set(display.deviceId, card);
-                }
-
-                updateDisplayStatus(display.deviceId, display.connected);
-                if (display.connected) {
-                    updateDisplayMetrics(display.deviceId);
-                }
-            }
-
-            for (const [deviceId, card] of displayCards) {
-                if (!displays.find(d => d.deviceId === deviceId)) {
-                    card.remove();
-                    displayCards.delete(deviceId);
-                }
-            }
-
-        } catch (error) {
-            displaysDiv.innerHTML = 'Error loading displays: ' + error;
-            showMessage('Error loading displays: ' + error, true);
-        }
     }
 
     function updateDisplayMetrics(deviceId) {
@@ -331,6 +534,97 @@
                 }
             })
             .catch(error => console.error(`Error updating metrics for ${deviceId}:`, error));
+    }
+
+    async function uploadImage(deviceId) {
+        const input = document.getElementById('image-' + deviceId);
+        const file = input.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const uploadButton = input.nextElementSibling;
+        uploadButton.disabled = true;
+        uploadButton.textContent = 'Uploading...';
+
+        try {
+            const response = await fetch('/displays/' + deviceId + '/image', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            showMessage(data.message || data.error, !!data.error);
+            input.value = '';
+            updateDisplays();
+            refreshHistory(deviceId);  // Refresh history after upload
+        } catch (error) {
+            showMessage(error.toString(), true);
+        } finally {
+            uploadButton.disabled = false;
+            uploadButton.textContent = 'Upload Image';
+        }
+    }
+
+    function sendCommand(deviceId, command) {
+        fetch('/displays/' + deviceId + '/command', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ command: command })
+        })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message || data.error, !!data.error);
+                if (command === 'REBOOT') {
+                    setTimeout(() => updateDisplays(), 5000);
+                } else {
+                    updateDisplays();
+                }
+            })
+            .catch(error => showMessage(error.toString(), true));
+    }
+
+    let displayCards = new Map();
+
+    async function updateDisplays() {
+        const displaysDiv = document.getElementById('displays');
+
+        try {
+            const displays = await fetch('/displays').then(r => r.json());
+
+            if (displays.length === 0) {
+                displaysDiv.innerHTML = 'No displays connected';
+                displayCards.clear();
+                return;
+            }
+
+            for (const display of displays) {
+                if (!displayCards.has(display.deviceId)) {
+                    const card = createDisplayCard(display);
+                    displaysDiv.appendChild(card);
+                    displayCards.set(display.deviceId, card);
+                    loadHistory(display.deviceId);
+                }
+
+                updateDisplayStatus(display.deviceId, display.connected);
+                if (display.connected) {
+                    updateDisplayMetrics(display.deviceId);
+                }
+            }
+
+            for (const [deviceId, card] of displayCards) {
+                if (!displays.find(d => d.deviceId === deviceId)) {
+                    card.remove();
+                    displayCards.delete(deviceId);
+                }
+            }
+
+        } catch (error) {
+            displaysDiv.innerHTML = 'Error loading displays: ' + error;
+            showMessage('Error loading displays: ' + error, true);
+        }
     }
 
     updateDisplays();
